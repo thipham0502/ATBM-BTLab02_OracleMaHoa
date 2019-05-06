@@ -1,0 +1,53 @@
+﻿--Chứa dữ liệu cột LUONG sau khi mã hóa
+ALTER TABLE NHANVIEN ADD ENCRYPTED_LUONG RAW(2000);
+
+--Chứa random key dùng cho mã hóa và giải mã
+ALTER TABLE NHANVIEN ADD ENCRYPT_KEY RAW(32);
+
+--ALTER TABLE NHANVIEN DROP COLUMN ENCRYPTED_LUONG;
+--ALTER TABLE NHANVIEN DROP COLUMN ENCRYPT_KEY;
+
+/*--Xóa dữ liệu cột LUONG sau khi mã hóa
+ALTER TABLE NHANVIEN DROP COLUMN LUONG;
+*/
+
+--Generate random key for encryption and decryption
+UPDATE NHANVIEN SET ENCRYPT_KEY = DBMS_CRYPTO.RANDOMBYTES(32);
+
+--Tạo stored procedure mã hóa tất cả cột LUONG bằng khóa ENCRYPT_KEY tạo ngẫu nhiên của từng nhân viên
+CREATE OR REPLACE PROCEDURE sp_Encrypt_NHANVIEN_Luong_1612894
+AS 
+  V_DATA_TO_ENCRYPT RAW(2000); -- stores result of LUONG after XOR-ing
+  V_ENCRYPTED_RAW RAW (2000); -- stores encrypted data
+  V_ENCRYPTION_TYPE PLS_INTEGER := -- total encryption type
+  DBMS_CRYPTO.ENCRYPT_AES256 + DBMS_CRYPTO.CHAIN_CBC + DBMS_CRYPTO.PAD_PKCS5;
+  
+  -- cursor read MANV, DIENTHOAI, LUONG of each row in NHANVIEN
+  CURSOR NV_CUR IS SELECT MANV, DIENTHOAI, LUONG, ENCRYPT_KEY FROM NHANVIEN;
+BEGIN
+  FOR REC IN NV_CUR LOOP
+    DBMS_OUTPUT.PUT_LINE ('Original salary: ' || REC.LUONG);
+   
+    -- XOR (LUONG, DIENTHOAI) before encrypt 
+    V_DATA_TO_ENCRYPT := UTL_RAW.BIT_XOR(UTL_RAW.CAST_TO_RAW(REC.LUONG), UTL_RAW.CAST_TO_RAW(REC.DIENTHOAI));
+    DBMS_OUTPUT.PUT_LINE ('XOR result: ' || V_DATA_TO_ENCRYPT);
+    
+    -- encrypt V_DATA_TO_ENCRYPT with ENCRYPT_KEY
+    V_ENCRYPTED_RAW := DBMS_CRYPTO.ENCRYPT
+    ( src => V_DATA_TO_ENCRYPT,
+    typ => V_ENCRYPTION_TYPE,
+    key => REC.ENCRYPT_KEY
+    );
+    
+    DBMS_OUTPUT.PUT_LINE ('Encrypted salary (RAW): ' || V_ENCRYPTED_RAW);
+    
+    UPDATE NHANVIEN 
+    SET ENCRYPTED_LUONG = V_ENCRYPTED_RAW
+    WHERE MANV = REC.MANV;
+  END LOOP;
+END sp_Encrypt_NHANVIEN_Luong_1612894;
+/
+BEGIN
+  sp_Encrypt_NHANVIEN_Luong_1612894;
+END;
+/
